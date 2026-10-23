@@ -1,0 +1,13 @@
+{
+  "name": "dweb-proxy-api + DappFence",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+  "workspaceFolder": "/workspaces/dweb-proxy-api",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/dweb-proxy-api,type=bind",
+  "postCreateCommand": "bash dappfence/setup.sh",
+  "appPort": [
+    "127.0.0.1:8080:8080"
+  ],
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway"
+  ]
+}

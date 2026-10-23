@@ -1,0 +1,85 @@
+# local_gateway's ENS gateway on http://<name>.eth.localhost:8080 (its Caddy config is imported
+# unchanged), plus the DappFence routes. Plain http instead of tls internal, no DoH. Started by
+# dappfence/run.sh.
+
+{
+	admin off
+	auto_https off
+}
+
+import ../local_gateway/caddy/routes/dweb-proxy-api.Caddyfile
+import ../local_gateway/caddy/snippets/headers.Caddyfile
+
+http://*.eth.localhost:8080 {
+	encode gzip zstd
+	import default-headers
+
+	# --- DappFence ---
+
+	# vitalik.eth.localhost -> vitalik.eth
+	@ens header_regexp ens Host ^([a-z0-9.-]+\.eth)\.localhost(:\d+)?$
+	vars @ens name {re.ens.1}
+
+	# Demo only, not part of the protection: makes the browser refetch every file on reload, so a
+	# tampered file shows up right away.
+	header {
+		Cache-Control "no-cache"
+		defer
+	}
+
+	# Simulates a compromised gateway (see attack.sh): a file in dappfence/attacker/<path> is
+	# served instead of the real one from IPFS.
+	@tampered file {
+		root {$PATCH_DIR}/attacker
+		try_files {path}
+	}
+	handle @tampered {
+		root * {$PATCH_DIR}/attacker
+		file_server
+	}
+
+	handle /dappfence.js {
+		root * {$DAPPFENCE_DIR}
+		file_server
+	}
+
+	handle /integrity-manifest.json {
+		rewrite * /manifests/{vars.name}.json
+		reverse_proxy {$MANIFEST_SERVICE}
+	}
+
+	# First visit: no DappFence service worker yet. The loader sets this cookie once it is installed.
+	@firstVisit {
+		header Sec-Fetch-Mode navigate
+		not header Cookie *dappfence=1*
+	}
+	handle @firstVisit {
+		root * {$PATCH_DIR}
+		rewrite * /loader.html
+		templates
+		file_server
+	}
+
+	# --- end DappFence ---
+
+	handle {
+		# Drop the :8080 port so dweb-proxy-api sees vitalik.eth.localhost, as on port 443
+		request_header Host {http.request.host}
+		invoke dweb-proxy-api
+	}
+}
+
+# Not DappFence: local_gateway fetches IPFS content from its own IPFS node (rainbow), which we
+# don't run. dweb-proxy-api's IPFS_TARGET points here instead, and this forwards to a public IPFS
+# gateway (Filebase). The header changes make Filebase work where rainbow would be.
+http://localhost:8090 {
+	reverse_proxy https://ipfs.filebase.io {
+		# Filebase only answers for its own host, and redirects to https if told the request was http
+		header_up Host ipfs.filebase.io
+		header_up -X-Forwarded-Proto
+		# Always return the full file: the dweb-proxy-api route treats any 3xx, including a 304 on
+		# reload, as a redirect
+		header_up -If-None-Match
+		header_up -If-Modified-Since
+	}
+}

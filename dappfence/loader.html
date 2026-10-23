@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Loading…</title>
+<!-- First visit: install the DappFence service worker, then reload into the real site. -->
+<script
+  src="/dappfence.js"
+  data-manifest="/integrity-manifest.json"
+  data-manifest-signature-type="noble-secp256k1-recovered-eth"
+  data-manifest-signature-identity="{{env "DAPPFENCE_SIGNER"}}"
+></script>
+<script>
+  navigator.serviceWorker.ready.then(() => {
+    document.cookie = "dappfence=1; path=/; max-age=31536000; samesite=strict";
+    location.reload();
+  });
+</script>
